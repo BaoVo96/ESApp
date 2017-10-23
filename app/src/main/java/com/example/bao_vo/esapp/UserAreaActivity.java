@@ -13,16 +13,10 @@ import android.net.ConnectivityManager;
 import android.content.Context;
 import android.net.NetworkInfo;
 
-import android.app.NotificationManager;
-import android.app.PendingIntent;
-import android.support.v4.app.NotificationCompat;
-
 import java.lang.Integer;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
 
-import android.os.Vibrator;
-import android.media.RingtoneManager;
-import android.net.Uri;
-import android.media.Ringtone;
 
 import android.app.Activity;
 import org.eclipse.paho.android.service.MqttAndroidClient;
@@ -35,19 +29,16 @@ import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 
 public class UserAreaActivity extends AppCompatActivity {
-    private	String topic        = "co3053";
+    private	String topic        = "event";
     private	int qos             = 1;
-    private	String broker       = "tcp://m11.cloudmqtt.com:12375";
+    private	String broker       = "tcp://m11.cloudmqtt.com:16416";
     private	String clientId     = "mobileapp";
     private String userName;
     private String password;
     private static MqttAndroidClient client;
     private static MqttConnectOptions options;
-    private String synchTopic   = "synchronize";
+    private String commandTopic   = "command";
     private String synchMessage = "synchronize";
-    private int humidity = 90;
-    private int temperature = 40;
-    private int gasLevel = 500;
 
     //private
     TextView textViewGas;
@@ -126,10 +117,11 @@ public class UserAreaActivity extends AppCompatActivity {
 
         if (requestCode == 1) {
             if(resultCode == Activity.RESULT_OK){
-                humidity = Integer.parseInt(data.getStringExtra("humidity"));
-                temperature = Integer.parseInt(data.getStringExtra("temperature"));
-                gasLevel = Integer.parseInt(data.getStringExtra("gasLevel"));
+                String returnMessage = data.getStringExtra("returnMessage");
                 //Toast.makeText(UserAreaActivity.this,data.getStringExtra("humidity")+ ";" +data.getStringExtra("temperature")+ ";" +  data.getStringExtra("gasLevel"), Toast.LENGTH_LONG).show();
+                if(!returnMessage.equals("cancel")){
+                    publishMessageStatus(returnMessage);
+                }
 
             }
             if (resultCode == Activity.RESULT_CANCELED) {
@@ -179,28 +171,6 @@ public class UserAreaActivity extends AppCompatActivity {
         }
     }//end tryToSubscribe
 
-//    private void tryToUnscribe(){
-//        try {
-//            IMqttToken subToken = client.unsubscribe(topic);
-//            subToken.setActionCallback(new IMqttActionListener() {
-//                @Override
-//                public void onSuccess(IMqttToken asyncActionToken) {
-//                    Toast.makeText(UserAreaActivity.this, "You are unsubscribe", Toast.LENGTH_LONG).show();
-//                }
-//
-//                @Override
-//                public void onFailure(IMqttToken asyncActionToken,
-//                                      Throwable exception) {
-//                    // The subscription could not be performed, maybe the user was not
-//                    // authorized to subscribe on the specified topic e.g. using wildcards
-//                    Toast.makeText(UserAreaActivity.this, "Can't unsubscribe!", Toast.LENGTH_LONG).show();
-//                }
-//            });
-//        } catch (MqttException e) {
-//            e.printStackTrace();
-//        }
-//    }// end tryToUnsubscribe()
-
     private void tryToConnect(){
         try {
             IMqttToken token = client.connect(options);
@@ -247,7 +217,15 @@ public class UserAreaActivity extends AppCompatActivity {
 
     private void publishMessageSynchronize(){
         try {
-            client.publish(synchTopic, synchMessage.getBytes(), 0, false);
+            client.publish(commandTopic, synchMessage.getBytes(), 0, false);
+        } catch (MqttException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void publishMessageStatus(String aStatus){
+        try {
+            client.publish(commandTopic, aStatus.getBytes(), 0, false);
         } catch (MqttException e) {
             e.printStackTrace();
         }
@@ -274,39 +252,12 @@ public class UserAreaActivity extends AppCompatActivity {
 
             @Override
             public void messageArrived(String s, MqttMessage mqttMessage) throws Exception {
-                String[] parts = mqttMessage.toString().split(";");
+                String[] parts = mqttMessage.toString().split("\\|");
                 textViewTemperature.setText(parts[0]);
                 textViewHumidity.setText(parts[1]);
                 textViewGas.setText(parts[2]);
-                textViewLastUpdate.setText(parts[3]);
-                if(Integer.parseInt(textViewGas.getText().toString())>gasLevel){
-                    addNotification("Warning", "Gas level is high: " + textViewGas.getText().toString());
-                    Vibrator vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
-                    Uri notification = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-                    Ringtone r = RingtoneManager.getRingtone(getApplicationContext(), notification);
-                    r.play();
+                textViewLastUpdate.setText(getDateTime());
 
-                    vibrator.vibrate(2000);
-                }
-                if(Integer.parseInt(textViewHumidity.getText().toString()) > humidity){
-                    addNotification("Warning", "Humidity is high: " + textViewHumidity.getText().toString());
-                    Vibrator vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
-
-                    Uri notification = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-                    Ringtone r = RingtoneManager.getRingtone(getApplicationContext(), notification);
-                    r.play();
-                    vibrator.vibrate(2000);
-                }
-                if(Integer.parseInt(textViewTemperature.getText().toString()) > temperature){
-                    addNotification("Warning", "Temperature is high: " + textViewTemperature.getText().toString());
-                    Vibrator vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
-
-                    Uri notification = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-                    Ringtone r = RingtoneManager.getRingtone(getApplicationContext(), notification);
-                    r.play();
-
-                    vibrator.vibrate(2000);
-                }
 
             }
 
@@ -317,23 +268,15 @@ public class UserAreaActivity extends AppCompatActivity {
         });////end Get message from mqtt cloud////
     }
 
-    /*addNotification
-    * This function send a notification to user*/
-    private void addNotification(String title, String text) {
-        NotificationCompat.Builder builder =
-                new NotificationCompat.Builder(this)
-                        .setSmallIcon(R.drawable.warning_icon)
-                        .setContentTitle(title)
-                        .setContentText(text);
+    private String getDateTime(){
 
-        Intent notificationIntent = new Intent(this, UserAreaActivity.class);
-        PendingIntent contentIntent = PendingIntent.getActivity(this, 0, notificationIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT);
-        builder.setContentIntent(contentIntent);
+        Calendar c = Calendar.getInstance();
+        System.out.println("Current time => "+c.getTime());
 
-        // Add as notification
-        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        manager.notify(0, builder.build());
-    }/*END addNotification*/
+        SimpleDateFormat df = new SimpleDateFormat("HH:mm:ss\nyyyy-MM-dd");
+        return df.format(c.getTime());
+
+    }
+
 
 }/* END UserAreaActivity()*/

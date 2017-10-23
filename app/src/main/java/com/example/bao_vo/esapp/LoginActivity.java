@@ -18,9 +18,9 @@ import org.eclipse.paho.client.mqttv3.MqttException;
 //=========================================
 public class LoginActivity extends AppCompatActivity {
 
-    private	String topic        = "co3053";
+    private	String topic        = "event";
     private	int qos             = 1;
-    private	String broker       = "tcp://m11.cloudmqtt.com:12375";
+    private	String broker       = "tcp://m11.cloudmqtt.com:16416";
     private	String clientId     = "mobileapp";
 
     private boolean isUserAreaActivityRunning = false;
